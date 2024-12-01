@@ -6,7 +6,6 @@ using EFT;
 using EFT.Interactive;
 using EFT.Quests;
 using HarmonyLib;
-using UnityEngine;
 using static EFT.Quests.ConditionCounterCreator;
 
 namespace GTFO
@@ -61,7 +60,7 @@ namespace GTFO
         internal void UpdateQuestCompletedConditions(QuestClass bsgQuest)
         {
 #if DEBUG
-            GTFOComponent.Logger.LogWarning($"Updating Completed Quest Data from BSG Quest: {bsgQuest.Id.LocalizedName()} of type {bsgQuest.QuestTypeName} \r ID: {bsgQuest.Id}");
+            GTFOComponent.Logger.LogWarning($"Updating Completed Quest Data from BSG Quest: {bsgQuest.Id} of type {bsgQuest.QuestTypeName} \r ID: {bsgQuest.Id}");
 #endif
             // Iterate through QuestObjectives to find the completed objective
             for (int i = 0; i < QuestObjectives.Count; i++)
@@ -100,9 +99,33 @@ namespace GTFO
         }
         internal List<QuestDataClass> GetQuestsList()
         {
-            var absQuestController = Traverse.Create(_player).Field("_questController").GetValue<AbstractQuestControllerClass>();
-            var quests = Traverse.Create(absQuestController).Property("Quests").GetValue<GClass3386>();
-            var questsList = Traverse.Create(quests).Field("list_1").GetValue<List<QuestDataClass>>();
+            var questController = _playerQuestControllerField.GetValue(_player) as AbstractQuestControllerClass;
+            if (questController == null)
+            {
+                GTFOComponent.Logger.LogError("Failed to get quest controller");
+                return null;
+            }
+
+            var quests = _questControllerQuestsProperty.GetValue(questController);
+            if (quests == null)
+            {
+                GTFOComponent.Logger.LogError("Failed to get quests");
+                return null;
+            }
+
+            var questsListField = quests.GetType().GetField("list_1", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (questsListField == null)
+            {
+                GTFOComponent.Logger.LogError("Failed to find quests list field");
+                return null;
+            }
+
+            var questsList = questsListField.GetValue(quests) as List<QuestDataClass>;
+            if (questsList == null)
+            {
+                GTFOComponent.Logger.LogError("Failed to get quests list");
+                return null;
+            }
 
             return questsList;
         }
@@ -132,7 +155,7 @@ namespace GTFO
                     GTFOComponent.Logger.LogError("Quest Template Conditions are null for QuestID: " + quest.Id);
                 }
 #endif
-                
+
                 return;
             }
 
@@ -167,7 +190,7 @@ namespace GTFO
                 }
 
 #if DEBUG
-                GTFOComponent.Logger.LogWarning($"Processing Condition: {condition.id.Localized()}");
+                GTFOComponent.Logger.LogWarning($"Processing Condition: {condition.id.LocalizedName()}");
 #endif
 
                 //check if condition has already been completed
@@ -219,7 +242,7 @@ namespace GTFO
             if (!isComplete)
             {
 #if DEBUG
-                GTFOComponent.Logger.LogWarning($"False positive on condition completion found: {condition.id.Localized()}");
+                GTFOComponent.Logger.LogWarning($"False positive on condition completion found: {condition.id.LocalizedName()}");
 #endif
             }
             return isComplete;
@@ -229,7 +252,7 @@ namespace GTFO
         {
 #if DEBUG
             GTFOComponent.Logger.LogInfo("Processing Condition of type: " + condition.GetType());
-            GTFOComponent.Logger.LogInfo("\tCondition: " + condition.id.Localized());
+            GTFOComponent.Logger.LogInfo("\tCondition: " + condition.id.LocalizedShortName());
 #endif
 
             switch (condition)
@@ -260,21 +283,58 @@ namespace GTFO
 
         private void ProcessConditionCounter(ConditionCounterCreator counterCreator, string nameKey, string traderId, TriggerWithId[] allTriggers, List<QuestData> questMarkerData, QuestDataClass quest)
         {
-            var counter = Traverse.Create(counterCreator).Field("_templateConditions").GetValue<ConditionCounterTemplate>();
-            var conditions = Traverse.Create(counter).Field("Conditions").GetValue<GClass3392>();
-            var conditionsList = Traverse.Create(conditions).Field("list_0").GetValue<IList<Condition>>();
+            var templateField = counterCreator.GetType().GetField("_templateConditions", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (templateField == null)
+            {
+                GTFOComponent.Logger.LogError("Failed to find _templateConditions field");
+                return;
+            }
+
+            var counter = templateField.GetValue(counterCreator) as ConditionCounterTemplate;
+            if (counter == null)
+            {
+                GTFOComponent.Logger.LogError("Failed to get ConditionCounterTemplate");
+                return;
+            }
+
+            var conditionsField = counter.GetType().GetField("Conditions", BindingFlags.Public | BindingFlags.Instance);
+            if (conditionsField == null)
+            {
+                GTFOComponent.Logger.LogError("Failed to find Conditions field");
+                return;
+            }
+
+            var conditions = conditionsField.GetValue(counter);
+            if (conditions == null)
+            {
+                GTFOComponent.Logger.LogError("Failed to get conditions object");
+                return;
+            }
+
+            var listField = conditions.GetType().GetField("list_0", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (listField == null)
+            {
+                GTFOComponent.Logger.LogError("Failed to find list_0 field");
+                return;
+            }
+
+            var conditionsList = listField.GetValue(conditions) as IList<Condition>;
+            if (conditionsList == null)
+            {
+                GTFOComponent.Logger.LogError("Failed to get conditions list");
+                return;
+            }
 
             foreach (var counterCondition in conditionsList)
             {
 #if DEBUG
-                GTFOComponent.Logger.LogInfo("\tIn Foreach Loop of ConditionCounterCreator");
-                GTFOComponent.Logger.LogInfo("\t\tCounterCondition type: " + counterCondition.GetType());
-                GTFOComponent.Logger.LogInfo("\t\tCounterCondition: " + counterCondition.id.Localized());
+        GTFOComponent.Logger.LogInfo("\tIn Foreach Loop of ConditionCounterCreator");
+        GTFOComponent.Logger.LogInfo("\t\tCounterCondition type: " + counterCondition.GetType());
+        GTFOComponent.Logger.LogInfo("\t\tCounterCondition: " + counterCondition.id.LocalizedName());
 #endif
 
                 ProcessCounterCondition(counterCondition, nameKey, traderId, allTriggers, questMarkerData, quest);
             }
-
         }
 
         private void ProcessConditionPlaceItemClass(string conditionId, string zoneId, string nameKey, string traderId, bool isNecessary,
@@ -366,11 +426,11 @@ namespace GTFO
                         var staticInfo = new QuestData
                         {
                             Id = zone.id,
-                            ParentId = zone.parentId,
+                            ParentId = zone.ParentId,
                             Location = ToQuestLocation(trigger.transform.position),
                             ZoneId = zoneId,
                             NameText = nameKey.Localized(),
-                            Description = zone.id.Localized(),
+                            Description = zone.id.LocalizedName(),
                             Trader = TraderIdToName(traderId),
                             IsNecessary = isNecessary,
                             IsCompleted = false,
@@ -390,8 +450,7 @@ namespace GTFO
         {
             string zoneId = place.target;
 
-            IEnumerable<ExperienceTrigger> zoneTriggers =
-                allTriggers.GetZoneTriggers<ExperienceTrigger>(zoneId);
+            IEnumerable<ExperienceTrigger> zoneTriggers = allTriggers.GetZoneTriggers<ExperienceTrigger>(zoneId);
 
             if (zoneTriggers != null && zoneTriggers.Any())
             {
@@ -501,7 +560,7 @@ namespace GTFO
             { "5714dc692459777137212e12", "TarkovStreets" },
             { "653e6760052c01c1c805532f", "Sandbox" }
         };
-        
+
         internal void DrawQuestDropdown(List<QuestDataClass> questsListOriginal)
         {
             //only if GTFOComponent.questManager.questDataService is not null
@@ -530,14 +589,14 @@ namespace GTFO
                     }
                 }
                 //if the quest is started and questlocation matches current map
-                
+
             }
 
-            if(questsList.Count > 1)
+            if (questsList.Count > 1)
             {
                 GTFOPlugin.Instance.RebindDropDown(questsList);
             }
-            
+
 
         }
 

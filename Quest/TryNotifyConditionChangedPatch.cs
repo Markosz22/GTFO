@@ -12,7 +12,7 @@ namespace GTFO
         protected override MethodBase GetTargetMethod()
         {
 
-            return AccessTools.Method(typeof(GClass3228), nameof(GClass3228.TryNotifyConditionChanged));
+            return AccessTools.Method(typeof(GClass3606), nameof(GClass3606.TryNotifyConditionChanged));
         }
 
         [PatchPostfix]
